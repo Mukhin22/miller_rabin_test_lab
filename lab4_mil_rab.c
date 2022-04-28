@@ -11,15 +11,23 @@
 #define NUM_TO_START_FROM   ((int64_t) 595000000)
 #define ACCURACY            ((double)  0.0001)
 
-/* @brief Macro is needed to build the coef of RAND_MAX
- * Linux GCC compiler has higher value and gives
- * correct results but windows minGW has RAND_MAX
- * about 32k - so result was incorrect
- * @retval - 1 in case RANMAX is high enough
- * and double coef in case if it's needed (minGW)
+// Hallvard B. Furuseth RAND_MAX len definer
+#define IMAX_BITS(m) ((m)/((m)%255+1) / 255%255*8 + 7-86/((m)%255+12))
+#define RAND_MAX_LEN IMAX_BITS(RAND_MAX)
+
+/* RAND_MAX has to be Mersenne number */
+_Static_assert((RAND_MAX & (RAND_MAX + 1u)) == 0, "RAND_MAX not a Mersenne number");
+
+/* brief generate concatenated number of 64 bits len
  */
-#define SYS_RAND_MAX_COEF(_num)  ((RAND_MAX < (_num)) ? \
-  ((double)(((double)_num) / ((double)RAND_MAX))) : 1 )
+uint64_t rand64(void) {
+  uint64_t r = 0;
+  for (int i = 0; i < 64; i += RAND_MAX_LEN) {
+    r <<= RAND_MAX_LEN;
+    r ^= (unsigned) rand();
+  }
+  return r;
+}
 
 // type to carry the launch parameters
 typedef struct params {
@@ -84,7 +92,7 @@ static bool miller_rabin_test(int64_t d, int64_t n, bool display, FILE *dump_fil
 {
     // Pick a random number in [2..n-1]
     int64_t cut_case = 0;
-    int64_t a = 2 + ((rand() % (n - 1)) * SYS_RAND_MAX_COEF(n - 1));
+    int64_t a = 2 + ((rand64() % (n - 2)));
 
  	if (display && (n0 != n)) {
  		// n0 = n;
@@ -180,8 +188,8 @@ static void is_prime_mil_rab_lab(int64_t tests_num, int64_t num_to_test,
 static inline void print_help(void)
 {
 	printf("To run the program correct use:\n"
-		"./mil_rab.exe <int64_t number_to_start_from> <double accuracy>\n"
-		"example: ./mil_rab.exe 50000000 0.00001\n");
+		"mil_rab.exe <int64_t number_to_start_from> <double accuracy>\n"
+		"example: mil_rab.exe 50000000 0.00001\n");
 }
 static inline void print_error(void)
 {
@@ -223,6 +231,7 @@ static void parse_params(int argc, char *argv[], algo_params_t* start_params)
 
 int main(int argc, char *argv[])
 {
+	printf("rand_max = %ld", (int64_t) RAND_MAX);
 	algo_params_t start_params = {};
 	parse_params(argc, argv, &start_params);
 
@@ -248,10 +257,11 @@ int main(int argc, char *argv[])
 	is_prime_mil_rab_lab(tests_num, start_params.num_to_start_from, true,
 	 					 results_file, dump_file);
 
+	fclose(results_file);
+	fclose(dump_file);
+
 	printf("Press any key to exit ...\n");
 	getchar();
 
-	fclose(results_file);
-	fclose(dump_file);
 	return 0;
 }
